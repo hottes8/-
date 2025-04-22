@@ -4,7 +4,7 @@ kb_menu = ReplyKeyboardMarkup(
     keyboard=[
         [
             KeyboardButton(text='О нас'),
-            KeyboardButton(text='11'),
+            KeyboardButton(text='Отмена'),
         ],
         [
             KeyboardButton(text='start'),
