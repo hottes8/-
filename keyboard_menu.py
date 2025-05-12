@@ -1,6 +1,5 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# Reply-клавиатура
 kb_menu = ReplyKeyboardMarkup(
     keyboard=[
         [
@@ -14,7 +13,6 @@ kb_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Inline-клавиатура для выбора размера
 kb_size = InlineKeyboardMarkup(row_width=2)
 kb_size.add(
     InlineKeyboardButton("1x1 м", callback_data="size_1x1"),

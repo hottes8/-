@@ -11,11 +11,11 @@ import re
 db = Database()
 print(db.connect())
 
-
 bot = Bot(token=config.TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 db = Database()
+
 
 async def on_startup(_):
     print('Бот запущен')
@@ -28,22 +28,27 @@ class Form(StatesGroup):
     photo = State()
     size = State()
 
-@dp.message_handler(commands=['start']) # Регистр не важен
+
+@dp.message_handler(commands=['start'])  # Регистр не важен
 async def cool_command(message: types.Message):
-    await message.answer("Здравствуйте, вас приветствует бот для помощи заказа рекламных баннеров, в появившеемся ниже меню вы можете выбрать одну из команд.", reply_markup=kb_menu)
+    await message.answer(
+        "Здравствуйте, вас приветствует бот для помощи заказа рекламных баннеров, в появившеемся ниже меню вы можете выбрать одну из команд.",
+        reply_markup=kb_menu)
+
 
 @dp.message_handler(text=['О нас'])
 async def cool_command(message: types.Message):
     await message.answer('''О компании «Пе4атниковЪ»
-    
+
     Если Вы заинтересованы в том, чтобы , дав рекламу, заявить о себе, привлечь новых клиентов и новых деловых партнеров, дать мощный толчок своему бизнесу, то Вы точно являетесь нашим потенциальным заказчиком. Наша компания специализируется на современных и наиболее эффективных видах рекламы, реализуя рекламные проекты различного масштаба по одним из самых низких цен в России.
-    
+
     У нас вы можете заказать полиграфическую продукцию и бизнес-сувениры любой сложности и любого объема: листовки, плакаты, буклеты, каталоги, афиши, папки, прайсы, календари, конверты, пакеты, крафт-пакеты и многое другое.
-    
+
     Мы имеем большой опыт в создании различных видов наружной рекламы: таблички, штендеры, вывески, объемные буквы, баннеры, растяжки, стенды, оформление витрин, световые короба, пресс-воллы.
-    
+
     Наша компания производит печать на всех видах текстильных изделий: майки, куртки, футболки, бейсболки, ленты и многое другое.
                          ''')
+
 
 @dp.message_handler(text=['Сделать заказ'])
 async def cmd_start(message: types.Message):
@@ -76,12 +81,37 @@ async def process_email(message: types.Message, state: FSMContext):
     await Form.next()
     await message.answer("Запомнил! Теперь введите ваш номер телефона:")
 
+
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
+    phone_number = message.text
+
+    cleaned_number = re.sub(r'[^\d+]', '', phone_number)
+
+    mobile_pattern = r'''
+        ^                # Начало строки
+        (\+7\d{10}       # +7 и 10 цифр (12 символов)
+        |8\d{10}         # 8 и 10 цифр (11 символов)
+        |9\d{9})$        # 9 и 9 цифр (10 символов)
+    '''.strip()
+
+    if not re.fullmatch(mobile_pattern, cleaned_number, re.VERBOSE):
+        await message.answer(
+            "❌ Пожалуйста, введите **мобильный** номер телефона:\n"
+            "• В формате `+7XXXXXXXXXX` (11 цифр)\n"
+            "• Или `8XXXXXXXXXX` (11 цифр)\n"
+            "• Или `9XXXXXXXXX` (10 цифр)\n\n"
+            "_Примеры: +79161234567, 89161234567, 9131234567_",
+            parse_mode="Markdown"
+        )
+        return
+
     async with state.proxy() as data:
-        data['phone'] = message.text
+        data['phone'] = cleaned_number
+
     await Form.next()
     await message.answer("Теперь отправьте ваше фото:")
+
 
 @dp.message_handler(content_types=types.ContentType.PHOTO, state=Form.photo)
 async def process_photo(message: types.Message, state: FSMContext):
@@ -89,31 +119,28 @@ async def process_photo(message: types.Message, state: FSMContext):
         data['photo_id'] = message.photo[-1].file_id
 
     await Form.next()
-    # Удаляем reply-клавиатуру
+
     await message.answer("📏 Выберите размер баннера:", reply_markup=types.ReplyKeyboardRemove())
-    # Отправляем inline-кнопки
+
     await message.answer("👇 Нажмите на подходящий размер:", reply_markup=kb_size)
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith('size_'), state=Form.size)
 async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
-    # Удаляем сообщение с кнопками
+
     await callback_query.message.delete()
 
-    # Извлекаем размер из callback_data
     size_type = callback_query.data.split('_')[1]
 
     if size_type == "custom":
         await bot.send_message(callback_query.from_user.id, "✏️ Введите свой размер (например, 2x3 м):")
         return
 
-    # Форматируем размер (например: size_1x1 -> 1x1 м)
     size = f"{size_type.replace('x', 'x')} м"
 
     async with state.proxy() as data:
         data['size'] = size
 
-    # Сохраняем данные
     user_data = await state.get_data()
     success = db.save_user(
         callback_query.from_user.id,
@@ -125,7 +152,6 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
     )
 
     await bot.answer_callback_query(callback_query.id)
-    # Отправляем подтверждение с размером
     await bot.send_message(
         callback_query.from_user.id,
         f"✅ Вы выбрали размер: {size}\nДанные сохранены! Скоро с вами свяжутся.",
@@ -139,7 +165,6 @@ async def process_custom_size(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['size'] = message.text
 
-    # Сохраняем данные
     user_data = await state.get_data()
     success = db.save_user(
         message.from_user.id,
@@ -161,7 +186,6 @@ async def process_custom_size(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['size'] = message.text
 
-    # Сохраняем данные
     user_data = await state.get_data()
     success = db.save_user(
         message.from_user.id,
@@ -182,9 +206,11 @@ async def process_custom_size(message: types.Message, state: FSMContext):
 
     await state.finish()
 
+
 @dp.message_handler(state=Form.photo, content_types=types.ContentTypes.ANY)
 async def invalid_content(message: types.Message):
     await message.reply("❌ Пожалуйста, отправьте фото!")
+
 
 @dp.message_handler(content_types=types.ContentTypes.ANY)
 async def unknown_command(message: types.Message):
