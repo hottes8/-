@@ -13,7 +13,7 @@ class Database:
             'user': os.getenv('DB_USER'),
             'password': os.getenv('DB_PASSWORD'),
             'database': os.getenv('DB_NAME'),
-            'auth_plugin': 'mysql_native_password'  # Для MySQL 8+
+            'auth_plugin': 'mysql_native_password'
         }
 
     def connect(self):
@@ -36,7 +36,7 @@ class Database:
                     INSERT INTO users 
                     (user_id, fio, email, phone, photo_id, size)
                     VALUES (%s, %s, %s, %s, %s, %s)  # Теперь 6 значений
-                ''', (user_id, fio, email, phone, photo_id, size))  # Добавлен size
+                ''', (user_id, fio, email, phone, photo_id, size))
 
                 connection.commit()
                 return True

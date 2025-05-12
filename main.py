@@ -76,10 +76,27 @@ async def process_fio(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=Form.email)
 async def process_email(message: types.Message, state: FSMContext):
+    email = message.text.strip().lower()
+
+    if not re.fullmatch(r'^[\w.-]+@([\w-]+\.)+(ru|com)$', email):
+        await message.answer(
+            "❌ Email должен содержать:\n"
+            "• Символ @\n"
+            "• Домен, заканчивающийся на .ru или .com\n\n"
+            "<b>Примеры правильных email:</b>\n"
+            "• ivanov@gmail.com\n"
+            "• petrov@yandex.ru\n"
+            "• sidorov@sub.domain.com\n"
+            "• test-2024@my-site.ru",
+            parse_mode="HTML"
+        )
+        return
+
     async with state.proxy() as data:
-        data['email'] = message.text
+        data['email'] = email
+
     await Form.next()
-    await message.answer("Запомнил! Теперь введите ваш номер телефона:")
+    await message.answer("✅ Email принят! Теперь введите ваш номер телефона:")
 
 
 @dp.message_handler(state=Form.phone)
@@ -127,9 +144,7 @@ async def process_photo(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(lambda c: c.data.startswith('size_'), state=Form.size)
 async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
-
     await callback_query.message.delete()
-
     size_type = callback_query.data.split('_')[1]
 
     if size_type == "custom":
@@ -142,7 +157,7 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
         data['size'] = size
 
     user_data = await state.get_data()
-    success = db.save_user(
+    db.save_user(
         callback_query.from_user.id,
         user_data['fio'],
         user_data['email'],
@@ -159,14 +174,13 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
     )
     await state.finish()
 
-
 @dp.message_handler(state=Form.size)
 async def process_custom_size(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['size'] = message.text
 
     user_data = await state.get_data()
-    success = db.save_user(
+    db.save_user(
         message.from_user.id,
         user_data['fio'],
         user_data['email'],
@@ -175,9 +189,10 @@ async def process_custom_size(message: types.Message, state: FSMContext):
         user_data['size']
     )
 
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, "✅ Данные сохранены! Скоро с вами свяжутся.",
-                           reply_markup=kb_menu)
+    await message.answer(
+        f"✅ Вы выбрали размер: {message.text}\nДанные сохранены! Скоро с вами свяжутся.",
+        reply_markup=kb_menu
+    )
     await state.finish()
 
 
