@@ -7,6 +7,11 @@ import config
 from keyboard_menu import kb_menu, kb_size
 from database import *
 import re
+import requests
+import os
+from aiogram import Bot, Dispatcher, types
+
+os.makedirs('photos', exist_ok=True)
 
 db = Database()
 print(db.connect())
@@ -56,7 +61,7 @@ async def cmd_start(message: types.Message):
     await message.answer("Пожалуйста, введите ваше ФИО:")
 
 
-@dp.message_handler(text=['Отмена'], state='*')  # Обработка текстовой кнопки
+@dp.message_handler(text=['Отмена'], state='*')
 async def cancel_handler(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is None:
@@ -132,14 +137,36 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 @dp.message_handler(content_types=types.ContentType.PHOTO, state=Form.photo)
 async def process_photo(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['photo_id'] = message.photo[-1].file_id
+    try:
+        # Получаем фото максимального качества
+        photo = message.photo[-1]
 
-    await Form.next()
+        # Получаем информацию о файле
+        file = await bot.get_file(photo.file_id)
+        file_url = f"https://api.telegram.org/file/bot{config.TOKEN}/{file.file_path}"
 
-    await message.answer("📏 Выберите размер баннера:", reply_markup=types.ReplyKeyboardRemove())
+        # Скачиваем и сохраняем фото
+        response = requests.get(file_url)
+        if response.status_code == 200:
+            filename = f"photos/{photo.file_id}.jpg"
+            with open(filename, "wb") as f:
+                f.write(response.content)
 
-    await message.answer("👇 Нажмите на подходящий размер:", reply_markup=kb_size)
+            # Сохраняем данные в state
+            async with state.proxy() as data:
+                data['photo_id'] = photo.file_id  # telegram file_id
+                data['photo_url'] = file_url  # временная ссылка
+                data['local_path'] = filename  # локальный путь
+
+            await Form.next()
+            await message.answer("📏 Выберите размер баннера:", reply_markup=kb_size)
+        else:
+            await message.answer("❌ Не удалось загрузить фото. Попробуйте ещё раз.")
+            return
+
+    except Exception as e:
+        print(f"Ошибка при обработке фото: {e}")
+        await message.answer("❌ Произошла ошибка при обработке фото. Попробуйте ещё раз.")
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith('size_'), state=Form.size)
@@ -157,22 +184,39 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
         data['size'] = size
 
     user_data = await state.get_data()
+
+    # Сохраняем данные
     db.save_user(
         callback_query.from_user.id,
         user_data['fio'],
         user_data['email'],
         user_data['phone'],
         user_data['photo_id'],
+        user_data['photo_url'],
+        user_data['local_path'],
         user_data['size']
     )
 
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(
-        callback_query.from_user.id,
-        f"✅ Вы выбрали размер: {size}\nДанные сохранены! Скоро с вами свяжутся.",
+    # Отправляем фото с подписью
+    await bot.send_photo(
+        chat_id=callback_query.from_user.id,
+        photo=user_data['photo_id'],
+        caption=f"""
+        📋 <b>Ваш заказ принят!</b>
+
+        👤 <b>ФИО:</b> {user_data['fio']}
+        📧 <b>Email:</b> {user_data['email']}
+        📱 <b>Телефон:</b> {user_data['phone']}
+        📏 <b>Размер баннера:</b> {user_data['size']}
+
+        🖼 <i>Прикрепленное фото будет использовано для макета</i>
+        """,
+        parse_mode="HTML",
         reply_markup=kb_menu
     )
+
     await state.finish()
+
 
 @dp.message_handler(state=Form.size)
 async def process_custom_size(message: types.Message, state: FSMContext):
@@ -180,19 +224,37 @@ async def process_custom_size(message: types.Message, state: FSMContext):
         data['size'] = message.text
 
     user_data = await state.get_data()
-    db.save_user(
+    success = db.save_user(
         message.from_user.id,
         user_data['fio'],
         user_data['email'],
         user_data['phone'],
         user_data['photo_id'],
+        user_data['photo_url'],
+        user_data['local_path'],
         user_data['size']
     )
 
-    await message.answer(
-        f"✅ Вы выбрали размер: {message.text}\nДанные сохранены! Скоро с вами свяжутся.",
-        reply_markup=kb_menu
-    )
+    if success:
+        # Отправляем фото с подписью
+        await message.answer_photo(
+            photo=user_data['photo_id'],
+            caption=f"""
+                📋 <b>Ваш заказ принят!</b>
+
+                👤 <b>ФИО:</b> {user_data['fio']}
+                📧 <b>Email:</b> {user_data['email']}
+                📱 <b>Телефон:</b> {user_data['phone']}
+                📏 <b>Размер баннера:</b> {user_data['size']}
+
+                🖼 <i>Прикрепленное фото будет использовано для макета</i>
+                """,
+            parse_mode="HTML",
+            reply_markup=kb_menu
+        )
+    else:
+        await message.answer("❌ Ошибка сохранения данных", reply_markup=kb_menu)
+
     await state.finish()
 
 

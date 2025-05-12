@@ -25,23 +25,23 @@ class Database:
             print(f"❌ Ошибка подключения: {e}")
             return None
 
-    def save_user(self, user_id, fio, email, phone, photo_id, size):  # Добавлен size
+    def save_user(self, user_id, fio, email, phone, photo_id, photo_url, local_path, size):
         try:
             connection = self.connect()
             if not connection:
                 return False
 
-            with connection.cursor() as cursor:
-                cursor.execute('''
-                    INSERT INTO users 
-                    (user_id, fio, email, phone, photo_id, size)
-                    VALUES (%s, %s, %s, %s, %s, %s)  # Теперь 6 значений
-                ''', (user_id, fio, email, phone, photo_id, size))
+            cursor = connection.cursor()
+            cursor.execute('''
+                INSERT INTO users 
+                (user_id, fio, email, phone, photo_id, photo_url, local_path, size)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (user_id, fio, email, phone, photo_id, photo_url, local_path, size))
 
-                connection.commit()
-                return True
+            connection.commit()
+            return True
         except Error as e:
-            print(f"❌ Ошибка сохранения: {e}")
+            print(f"❌ Ошибка: {e}")
             return False
         finally:
             if connection:
