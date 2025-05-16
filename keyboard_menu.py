@@ -8,6 +8,7 @@ kb_menu = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text='Сделать заказ'),
+            KeyboardButton(text='Статус заказа'),
         ],
     ],
     resize_keyboard=True
@@ -24,3 +25,24 @@ kb_size.add(
     InlineKeyboardButton("6x12 м", callback_data="size_6x12"),
     InlineKeyboardButton("Другой размер", callback_data="size_custom"),
 )
+
+kb_admin = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text='Изменить статус заказа')],
+        [KeyboardButton(text='Выйти из админ-панели')],
+    ],
+    resize_keyboard=True
+)
+
+statuses = [
+    "Заказ создан",
+    "В обработке",
+    "В производстве",
+    "Готов к выдаче",
+    "Выполнен",
+    "Отменен"
+]
+
+kb_statuses = ReplyKeyboardMarkup(resize_keyboard=True)
+for status in statuses:
+    kb_statuses.add(KeyboardButton(text=status))

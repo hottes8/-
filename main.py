@@ -10,6 +10,19 @@ import re
 import requests
 import os
 from aiogram import Bot, Dispatcher, types
+from admin_panel import (
+    AdminStates,
+    admin_login,
+    process_admin_password,
+    exit_admin_panel,
+    change_order_status_start,
+    process_user_id,
+    process_new_status
+)
+
+
+
+
 
 os.makedirs('photos', exist_ok=True)
 
@@ -33,6 +46,12 @@ class Form(StatesGroup):
     photo = State()
     size = State()
 
+dp.register_message_handler(admin_login, commands=['admin'])
+dp.register_message_handler(process_admin_password, state=AdminStates.waiting_password)
+dp.register_message_handler(exit_admin_panel, text='Выйти из админ-панели')
+dp.register_message_handler(change_order_status_start, text='Изменить статус заказа')
+dp.register_message_handler(process_user_id, state=AdminStates.waiting_user_id)
+dp.register_message_handler(process_new_status, state=AdminStates.waiting_new_status)
 
 @dp.message_handler(commands=['start'])  # Регистр не важен
 async def cool_command(message: types.Message):
@@ -138,25 +157,22 @@ async def process_phone(message: types.Message, state: FSMContext):
 @dp.message_handler(content_types=types.ContentType.PHOTO, state=Form.photo)
 async def process_photo(message: types.Message, state: FSMContext):
     try:
-        # Получаем фото максимального качества
+
         photo = message.photo[-1]
 
-        # Получаем информацию о файле
         file = await bot.get_file(photo.file_id)
         file_url = f"https://api.telegram.org/file/bot{config.TOKEN}/{file.file_path}"
 
-        # Скачиваем и сохраняем фото
         response = requests.get(file_url)
         if response.status_code == 200:
             filename = f"photos/{photo.file_id}.jpg"
             with open(filename, "wb") as f:
                 f.write(response.content)
 
-            # Сохраняем данные в state
             async with state.proxy() as data:
                 data['photo_id'] = photo.file_id  # telegram file_id
-                data['photo_url'] = file_url  # временная ссылка
-                data['local_path'] = filename  # локальный путь
+                data['photo_url'] = file_url
+                data['local_path'] = filename
 
             await Form.next()
             await message.answer("📏 Выберите размер баннера:", reply_markup=kb_size)
@@ -185,7 +201,6 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
 
     user_data = await state.get_data()
 
-    # Сохраняем данные
     db.save_user(
         callback_query.from_user.id,
         user_data['fio'],
@@ -197,25 +212,26 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
         user_data['size']
     )
 
-    # Отправляем фото с подписью
     await bot.send_photo(
         chat_id=callback_query.from_user.id,
         photo=user_data['photo_id'],
         caption=f"""
-        📋 <b>Ваш заказ принят!</b>
+                📋 <b>Ваш заказ принят!</b>
 
-        👤 <b>ФИО:</b> {user_data['fio']}
-        📧 <b>Email:</b> {user_data['email']}
-        📱 <b>Телефон:</b> {user_data['phone']}
-        📏 <b>Размер баннера:</b> {user_data['size']}
+                🚀 <b>Статус:</b> Заказ создан
+                👤 <b>ФИО:</b> {user_data['fio']}
+                📧 <b>Email:</b> {user_data['email']}
+                📱 <b>Телефон:</b> {user_data['phone']}
+                📏 <b>Размер баннера:</b> {user_data['size']}
 
-        🖼 <i>Прикрепленное фото будет использовано для макета</i>
-        """,
+                🖼 <i>Прикрепленное фото будет использовано для макета</i>
+                """,
         parse_mode="HTML",
         reply_markup=kb_menu
     )
 
     await state.finish()
+
 
 
 @dp.message_handler(state=Form.size)
@@ -236,12 +252,13 @@ async def process_custom_size(message: types.Message, state: FSMContext):
     )
 
     if success:
-        # Отправляем фото с подписью
+
         await message.answer_photo(
             photo=user_data['photo_id'],
             caption=f"""
                 📋 <b>Ваш заказ принят!</b>
-
+                
+                🚀 <b>Статус:</b> Заказ создан
                 👤 <b>ФИО:</b> {user_data['fio']}
                 📧 <b>Email:</b> {user_data['email']}
                 📱 <b>Телефон:</b> {user_data['phone']}
@@ -288,6 +305,13 @@ async def process_custom_size(message: types.Message, state: FSMContext):
 async def invalid_content(message: types.Message):
     await message.reply("❌ Пожалуйста, отправьте фото!")
 
+@dp.message_handler(text=['Статус заказа'])
+async def check_order_status(message: types.Message):
+    status = db.get_order_status(message.from_user.id)
+    if status:
+        await message.answer(f"📊 <b>Текущий статус вашего заказа:</b> {status}", parse_mode="HTML")
+    else:
+        await message.answer("ℹ️ У вас нет активных заказов. Хотите сделать новый?", reply_markup=kb_menu)
 
 @dp.message_handler(content_types=types.ContentTypes.ANY)
 async def unknown_command(message: types.Message):
