@@ -17,12 +17,12 @@ kb_menu = ReplyKeyboardMarkup(
 kb_size = InlineKeyboardMarkup(row_width=2)
 kb_size.add(
     InlineKeyboardButton("1x1 м", callback_data="size_1x1"),
-    InlineKeyboardButton("1x2 м", callback_data="size_1x2"),
-    InlineKeyboardButton("2x2 м", callback_data="size_2x2"),
-    InlineKeyboardButton("3x4 м", callback_data="size_3x4"),
-    InlineKeyboardButton("4x6 м", callback_data="size_4x6"),
-    InlineKeyboardButton("5x10 м", callback_data="size_5x10"),
-    InlineKeyboardButton("6x12 м", callback_data="size_6x12"),
+    InlineKeyboardButton("1x3 м", callback_data="size_1x2"),
+    InlineKeyboardButton("3x5 м", callback_data="size_2x2"),
+    InlineKeyboardButton("5x10 м", callback_data="size_3x4"),
+    InlineKeyboardButton("10x20 м", callback_data="size_4x6"),
+    InlineKeyboardButton("20x50 м", callback_data="size_5x10"),
+    InlineKeyboardButton("50x100 м", callback_data="size_6x12"),
     InlineKeyboardButton("Другой размер", callback_data="size_custom"),
 )
 
@@ -37,12 +37,12 @@ kb_admin = ReplyKeyboardMarkup(
 # Добавим словарь с ценами в keyboard_menu.py
 size_prices = {
     "1x1": 1000,
-    "1x2": 1800,
-    "2x2": 3500,
-    "3x4": 6000,
-    "4x6": 9000,
-    "5x10": 14000,
-    "6x12": 18000
+    "1x3": 2145,
+    "3x5": 3300,
+    "5x10": 6000,
+    "10x20": 9000,
+    "20x50": 14000,
+    "50x100": 18000
 }
 
 

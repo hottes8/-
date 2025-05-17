@@ -20,22 +20,42 @@ from admin_panel import (
     process_new_status
 )
 
-size_prices = {
-    "1x1": 1000,
-    "1x3": 1800,
+STANDARD_PRICES = {
+    "1x1": 1000,  # Фиксированные цены для стандартных размеров
+    "1x2": 1800,
     "2x2": 3500,
     "3x4": 6000,
     "4x6": 9000,
     "5x10": 14000,
     "6x12": 18000
 }
+PRICE_PER_M2 = 396  # Цена за кв.м для больших размеров
 
-def calculate_custom_price(width: float, height: float) -> int:
-    """Рассчитывает цену для нестандартного размера"""
-    for standard in [(1,1), (1,2), (2,2), (3,4), (4,6), (5,10), (6,12)]:
-        if width <= standard[0] and height <= standard[1]:
-            return size_prices[f"{standard[0]}x{standard[1]}"]
-    return size_prices["6x12"]
+
+def calculate_price(size_str):
+    """Рассчитывает стоимость баннера"""
+    if size_str in STANDARD_PRICES:
+        return STANDARD_PRICES[size_str]
+
+    if "x" in size_str:
+        try:
+            width, height = map(float, size_str.split('x'))
+            area = width * height
+
+            # Проверяем, превышает ли размер 6x12 м (72 кв.м)
+            if width > 6 or height > 12 or area > 72:
+                return round(area * PRICE_PER_M2)
+
+            # Ищем ближайший стандартный размер для меньших баннеров
+            for standard in ["1x1", "1x2", "2x2", "3x4", "4x6", "5x10", "6x12"]:
+                std_w, std_h = map(float, standard.split('x'))
+                if width <= std_w and height <= std_h:
+                    return STANDARD_PRICES[standard]
+
+            return STANDARD_PRICES["6x12"]
+        except:
+            return None
+    return None
 
 
 
@@ -206,14 +226,15 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
     size_type = callback_query.data.split('_')[1]
 
     if size_type == "custom":
-        await bot.send_message(callback_query.from_user.id, "✏️ Введите свой размер (например, 2x3 м):")
+        await bot.send_message(callback_query.from_user.id,
+                               "✏️ Введите размер в формате ШxВ (например 2x3 или 7x5):")
         return
 
-    size = f"{size_type.replace('x', 'x')} м"
+    size_str = f"{size_type.replace('x', 'x')} м"
     price = calculate_price(size_type)
 
     async with state.proxy() as data:
-        data['size'] = size
+        data['size'] = size_str
         data['price'] = price
 
     user_data = await state.get_data()
@@ -235,9 +256,9 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
         photo=user_data['photo_id'],
         caption=f"""
             📋 <b>Ваш заказ принят!</b>
-            
             🚀 <b>Статус:</b> Заказ создан
             💰 <b>Стоимость:</b> {price} руб
+
             👤 <b>ФИО:</b> {user_data['fio']}
             📧 <b>Email:</b> {user_data['email']}
             📱 <b>Телефон:</b> {user_data['phone']}
@@ -251,38 +272,19 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
     await state.finish()
 
 
-    await bot.send_photo(
-        chat_id=callback_query.from_user.id,
-        photo=user_data['photo_id'],
-        caption=f"""
-            📋 <b>Ваш заказ принят!</b>
-            
-            🚀 <b>Статус:</b> Заказ создан
-            💰 <b>Стоимость:</b> {price} руб
-            👤 <b>ФИО:</b> {user_data['fio']}
-            📧 <b>Email:</b> {user_data['email']}
-            📱 <b>Телефон:</b> {user_data['phone']}
-            📏 <b>Размер баннера:</b> {user_data['size']}
-
-            🖼 <i>Прикрепленное фото будет использовано для макета</i>
-            """,
-    parse_mode="HTML",
-    reply_markup=kb_menu
-)
-    await state.finish()
-
-
 @dp.message_handler(state=Form.size)
 async def process_custom_size(message: types.Message, state: FSMContext):
     try:
-        # Удаляем все пробелы и "м" если есть
+        # Очищаем ввод от пробелов и единиц измерения
         size_text = message.text.lower().replace(' ', '').replace('м', '')
+
         if 'x' in size_text:
             width, height = map(float, size_text.split('x'))
-
-            # Рассчитываем цену
-            price = calculate_custom_price(width, height)
             size_str = f"{width}x{height} м"
+            price = calculate_price(size_text)
+
+            if price is None:
+                raise ValueError("Неверный формат размера")
 
             async with state.proxy() as data:
                 data['size'] = size_str
@@ -304,20 +306,22 @@ async def process_custom_size(message: types.Message, state: FSMContext):
             )
 
             if success:
+                caption = f"""
+                    📋 <b>Ваш заказ принят!</b>
+                    🚀 <b>Статус:</b> Заказ создан
+                    💰 <b>Стоимость:</b> {price} руб
+                    {"🟢 <i>Расчет по цене 396 руб/кв.м</i>" if (width > 6 or height > 12) else ""}
+
+                    👤 <b>ФИО:</b> {user_data['fio']}
+                    📧 <b>Email:</b> {user_data['email']}
+                    📱 <b>Телефон:</b> {user_data['phone']}
+                    📏 <b>Размер баннера:</b> {user_data['size']}
+
+                    🖼 <i>Прикрепленное фото будет использовано для макета</i>
+                """
                 await message.answer_photo(
                     photo=user_data['photo_id'],
-                    caption=f"""
-                        📋 <b>Ваш заказ принят!</b>
-                        🚀 <b>Статус:</b> Заказ создан
-                        💰 <b>Стоимость:</b> {price} руб
-
-                        👤 <b>ФИО:</b> {user_data['fio']}
-                        📧 <b>Email:</b> {user_data['email']}
-                        📱 <b>Телефон:</b> {user_data['phone']}
-                        📏 <b>Размер баннера:</b> {user_data['size']}
-
-                        🖼 <i>Прикрепленное фото будет использовано для макета</i>
-                        """,
+                    caption=caption,
                     parse_mode="HTML",
                     reply_markup=kb_menu
                 )
@@ -329,7 +333,7 @@ async def process_custom_size(message: types.Message, state: FSMContext):
     except Exception as e:
         print(f"Ошибка обработки кастомного размера: {e}")
         await message.answer(
-            "❌ Неверный формат размера. Введите в формате 'ШxВ' (например '2x3' или '1.5x2')",
+            "❌ Неверный формат размера. Введите в формате 'ШxВ' (например '2x3' или '7x10')",
             reply_markup=kb_menu
         )
 
