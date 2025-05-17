@@ -1,5 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
+
 kb_menu = ReplyKeyboardMarkup(
     keyboard=[
         [
@@ -21,7 +22,7 @@ kb_size.add(
     InlineKeyboardButton("3x5 м", callback_data="size_3x5"),
     InlineKeyboardButton("5x5 м", callback_data="size_5x5"),
     InlineKeyboardButton("10x5 м", callback_data="size_10x5"),
-    InlineKeyboardButton("20x8 м", callback_data="size_20x8"),
+    InlineKeyboardButton("10x8 м", callback_data="size_10x8"),
     InlineKeyboardButton("15x10 м", callback_data="size_15x10"),
     InlineKeyboardButton("Другой размер", callback_data="size_custom"),
 )
@@ -29,20 +30,11 @@ kb_size.add(
 kb_admin = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text='Изменить статус заказа')],
+        [KeyboardButton(text='Настройка цен')],
         [KeyboardButton(text='Выйти из админ-панели')],
     ],
     resize_keyboard=True
 )
-
-size_prices = {
-    "1x1": 1000,
-    "1x3": 2145,
-    "3x5": 9900,
-    "5x5": 15125,
-    "10x5": 30250,
-    "10x8": 37840,
-    "15x10": 59400
-}
 
 statuses = [
     "Заказ создан",

@@ -9,7 +9,6 @@ import re
 import requests
 import os
 from keyboard_menu import kb_menu, kb_size
-from aiogram import Bot, Dispatcher, types
 from admin_panel import (
     AdminStates,
     admin_login,
@@ -17,7 +16,11 @@ from admin_panel import (
     exit_admin_panel,
     change_order_status_start,
     process_user_id,
-    process_new_status
+    process_new_status,
+    price_settings,
+    process_price_action,
+    process_new_price,
+    process_custom_price
 )
 
 STANDARD_PRICES = {
@@ -34,33 +37,33 @@ PRICE_PER_M2 = 396
 
 def calculate_price(size_str):
     """Рассчитывает стоимость баннера"""
-    if size_str in STANDARD_PRICES:
-        return STANDARD_PRICES[size_str]
+    price = db.get_price(size_str)
+    if price is not None:
+        return price
 
     if "x" in size_str:
         try:
             width, height = map(float, size_str.split('x'))
             area = width * height
+            price_per_m2 = db.get_price('custom') or PRICE_PER_M2
 
             if width > 15 or height > 10 or area > 150:
-                return round(area * PRICE_PER_M2)
+                return round(area * price_per_m2)
 
-            for standard in ["1x1", "1x3", "3x5", "5x5", "10x5", "10x8", "15x10"]:
-                std_w, std_h = map(float, standard.split('x'))
-                if width <= std_w and height <= std_h:
-                    return STANDARD_PRICES[standard]
+            standard_sizes = db.get_prices()
+            for size in standard_sizes:
+                if not size['is_custom']:
+                    std_w, std_h = map(float, size['size'].split('x'))
+                    if width <= std_w and height <= std_h:
+                        return size['price']
 
-            return STANDARD_PRICES["15x10"]
+            return db.get_price('15x10') or STANDARD_PRICES.get("15x10", 59400)
         except:
             return None
     return None
 
 
-
 os.makedirs('photos', exist_ok=True)
-
-db = Database()
-print(db.connect())
 
 bot = Bot(token=config.TOKEN)
 storage = MemoryStorage()
@@ -70,6 +73,9 @@ db = Database()
 
 async def on_startup(_):
     print('Бот запущен')
+    for size, price in STANDARD_PRICES.items():
+        db.update_price(size, price, is_custom=False)
+    db.update_price('custom', PRICE_PER_M2, is_custom=True)
 
 
 class Form(StatesGroup):
@@ -79,6 +85,11 @@ class Form(StatesGroup):
     photo = State()
     size = State()
 
+
+dp.register_message_handler(price_settings, text="Настройка цен")
+dp.register_message_handler(process_price_action, state=AdminStates.waiting_price_action)
+dp.register_message_handler(process_new_price, state=AdminStates.waiting_new_price)
+dp.register_message_handler(process_custom_price, state=AdminStates.waiting_custom_price)
 dp.register_message_handler(admin_login, commands=['admin'])
 dp.register_message_handler(process_admin_password, state=AdminStates.waiting_password)
 dp.register_message_handler(exit_admin_panel, text='Выйти из админ-панели')
@@ -86,7 +97,8 @@ dp.register_message_handler(change_order_status_start, text='Изменить с
 dp.register_message_handler(process_user_id, state=AdminStates.waiting_user_id)
 dp.register_message_handler(process_new_status, state=AdminStates.waiting_new_status)
 
-@dp.message_handler(commands=['start'])  # Регистр не важен
+
+@dp.message_handler(commands=['start'])
 async def cool_command(message: types.Message):
     await message.answer(
         "Здравствуйте, вас приветствует бот для помощи заказа рекламных баннеров, в появившеемся ниже меню вы можете выбрать одну из команд.",
@@ -94,16 +106,16 @@ async def cool_command(message: types.Message):
 
 
 @dp.message_handler(text=['О нас'])
-async def cool_command(message: types.Message):
+async def about_command(message: types.Message):
     await message.answer('''О компании «Пе4атниковЪ»
 
-    Если Вы заинтересованы в том, чтобы , дав рекламу, заявить о себе, привлечь новых клиентов и новых деловых партнеров, дать мощный толчок своему бизнесу, то Вы точно являетесь нашим потенциальным заказчиком. Наша компания специализируется на современных и наиболее эффективных видах рекламы, реализуя рекламные проекты различного масштаба по одним из самых низких цен в России.
+Если Вы заинтересованы в том, чтобы , дав рекламу, заявить о себе, привлечь новых клиентов и новых деловых партнеров, дать мощный толчок своему бизнесу, то Вы точно являетесь нашим потенциальным заказчиком. Наша компания специализируется на современных и наиболее эффективных видах рекламы, реализуя рекламные проекты различного масштаба по одним из самых низких цен в России.
 
-    У нас вы можете заказать полиграфическую продукцию и бизнес-сувениры любой сложности и любого объема: листовки, плакаты, буклеты, каталоги, афиши, папки, прайсы, календари, конверты, пакеты, крафт-пакеты и многое другое.
+У нас вы можете заказать полиграфическую продукцию и бизнес-сувениры любой сложности и любого объема: листовки, плакаты, буклеты, каталоги, афиши, папки, прайсы, календари, конверты, пакеты, крафт-пакеты и многое другое.
 
-    Мы имеем большой опыт в создании различных видов наружной рекламы: таблички, штендеры, вывески, объемные буквы, баннеры, растяжки, стенды, оформление витрин, световые короба, пресс-воллы.
+Мы имеем большой опыт в создании различных видов наружной рекламы: таблички, штендеры, вывески, объемные буквы, баннеры, растяжки, стенды, оформление витрин, световые короба, пресс-воллы.
 
-    Наша компания производит печать на всех видах текстильных изделий: майки, куртки, футболки, бейсболки, ленты и многое другое.
+Наша компания производит печать на всех видах текстильных изделий: майки, куртки, футболки, бейсболки, ленты и многое другое.
                          ''')
 
 
@@ -190,9 +202,7 @@ async def process_phone(message: types.Message, state: FSMContext):
 @dp.message_handler(content_types=types.ContentType.PHOTO, state=Form.photo)
 async def process_photo(message: types.Message, state: FSMContext):
     try:
-
         photo = message.photo[-1]
-
         file = await bot.get_file(photo.file_id)
         file_url = f"https://api.telegram.org/file/bot{config.TOKEN}/{file.file_path}"
 
@@ -228,8 +238,12 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
                                "✏️ Введите размер в формате ШxВ (например 2x3 или 7x5):")
         return
 
-    size_str = f"{size_type.replace('x', 'x')} м"
     price = calculate_price(size_type)
+    if price is None:
+        await callback_query.message.answer("❌ Не удалось рассчитать стоимость для этого размера")
+        return
+
+    size_str = f"{size_type.replace('x', 'x')} м"
 
     async with state.proxy() as data:
         data['size'] = size_str
@@ -273,16 +287,15 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
 @dp.message_handler(state=Form.size)
 async def process_custom_size(message: types.Message, state: FSMContext):
     try:
-
         size_text = message.text.lower().replace(' ', '').replace('м', '')
 
         if 'x' in size_text:
-            width, height = map(float, size_text.split('x'))
-            size_str = f"{width}x{height} м"
             price = calculate_price(size_text)
-
             if price is None:
                 raise ValueError("Неверный формат размера")
+
+            width, height = map(float, size_text.split('x'))
+            size_str = f"{width}x{height} м"
 
             async with state.proxy() as data:
                 data['size'] = size_str
@@ -307,7 +320,7 @@ async def process_custom_size(message: types.Message, state: FSMContext):
                     📋 <b>Ваш заказ принят!</b>
                     🚀 <b>Статус:</b> Заказ создан
                     💰 <b>Стоимость:</b> {price} руб
-                    {"🟢 <i>Расчет по цене 396 руб/кв.м</i>" if (width > 6 or height > 12) else ""}
+                    {"🟢 <i>Расчет по цене 396 руб/кв.м</i>" if (width > 15 or height > 10) else ""}
 
                     👤 <b>ФИО:</b> {user_data['fio']}
                     📧 <b>Email:</b> {user_data['email']}
@@ -335,16 +348,6 @@ async def process_custom_size(message: types.Message, state: FSMContext):
         )
 
 
-@dp.message_handler(state=Form.size)
-async def process_custom_size(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['size'] = message.text
-
-
-@dp.message_handler(state=Form.photo, content_types=types.ContentTypes.ANY)
-async def invalid_content(message: types.Message):
-    await message.reply("❌ Пожалуйста, отправьте фото!")
-
 @dp.message_handler(text=['Статус заказа'])
 async def check_order_status(message: types.Message):
     status = db.get_order_status(message.from_user.id)
@@ -353,12 +356,32 @@ async def check_order_status(message: types.Message):
     else:
         await message.answer("ℹ️ У вас нет активных заказов. Хотите сделать новый?", reply_markup=kb_menu)
 
+
 @dp.message_handler(content_types=types.ContentTypes.ANY)
-async def unknown_command(message: types.Message):
-    if message.content_type != 'Отмена' or 'start' or 'О нас' or 'Сделать заказ':
-        await message.reply("⚠️ Извините, такой команды не существует.\nИспользуйте кнопки меню или /start")
-    else:
-        await message.reply("❌ Я работаю только с текстовыми командами")
+async def handle_unknown_messages(message: types.Message):
+
+    if message.text and message.text.startswith('/admin'):
+        return
+
+    existing_commands = ['О нас', 'Отмена', 'Сделать заказ', 'Статус заказа']
+    if message.text in existing_commands:
+        return
+
+    current_state = await dp.current_state(chat=message.chat.id, user=message.from_user.id).get_state()
+    if current_state:
+        return
+
+    response = (
+        "⚠️ Извините, я не понимаю ваше сообщение.\n\n"
+        "Пожалуйста, используйте кнопки меню или одну из следующих команд:\n"
+        "• /start - Перезапустить бота\n"
+        "• О нас - Информация о компании\n"
+        "• Сделать заказ - Оформить новый заказ\n"
+        "• Статус заказа - Проверить статус текущего заказа\n\n"
+        "Если вы хотите сделать заказ, нажмите 'Сделать заказ' в меню."
+    )
+
+    await message.answer(response, reply_markup=kb_menu)
 
 
 if __name__ == '__main__':
