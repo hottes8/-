@@ -8,7 +8,7 @@ from database import *
 import re
 import requests
 import os
-from keyboard_menu import kb_menu, kb_size, calculate_price
+from keyboard_menu import kb_menu, kb_size
 from aiogram import Bot, Dispatcher, types
 from admin_panel import (
     AdminStates,
@@ -21,15 +21,15 @@ from admin_panel import (
 )
 
 STANDARD_PRICES = {
-    "1x1": 1000,  # Фиксированные цены для стандартных размеров
-    "1x2": 1800,
-    "2x2": 3500,
-    "3x4": 6000,
-    "4x6": 9000,
-    "5x10": 14000,
-    "6x12": 18000
+    "1x1": 1000,
+    "1x3": 2145,
+    "3x5": 9900,
+    "5x5": 15125,
+    "10x5": 30250,
+    "10x8": 37840,
+    "15x10": 59400
 }
-PRICE_PER_M2 = 396  # Цена за кв.м для больших размеров
+PRICE_PER_M2 = 396
 
 
 def calculate_price(size_str):
@@ -42,17 +42,15 @@ def calculate_price(size_str):
             width, height = map(float, size_str.split('x'))
             area = width * height
 
-            # Проверяем, превышает ли размер 6x12 м (72 кв.м)
-            if width > 6 or height > 12 or area > 72:
+            if width > 15 or height > 10 or area > 150:
                 return round(area * PRICE_PER_M2)
 
-            # Ищем ближайший стандартный размер для меньших баннеров
-            for standard in ["1x1", "1x2", "2x2", "3x4", "4x6", "5x10", "6x12"]:
+            for standard in ["1x1", "1x3", "3x5", "5x5", "10x5", "10x8", "15x10"]:
                 std_w, std_h = map(float, standard.split('x'))
                 if width <= std_w and height <= std_h:
                     return STANDARD_PRICES[standard]
 
-            return STANDARD_PRICES["6x12"]
+            return STANDARD_PRICES["15x10"]
         except:
             return None
     return None
@@ -205,7 +203,7 @@ async def process_photo(message: types.Message, state: FSMContext):
                 f.write(response.content)
 
             async with state.proxy() as data:
-                data['photo_id'] = photo.file_id  # telegram file_id
+                data['photo_id'] = photo.file_id
                 data['photo_url'] = file_url
                 data['local_path'] = filename
 
@@ -275,7 +273,7 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
 @dp.message_handler(state=Form.size)
 async def process_custom_size(message: types.Message, state: FSMContext):
     try:
-        # Очищаем ввод от пробелов и единиц измерения
+
         size_text = message.text.lower().replace(' ', '').replace('м', '')
 
         if 'x' in size_text:
@@ -292,7 +290,6 @@ async def process_custom_size(message: types.Message, state: FSMContext):
 
             user_data = await state.get_data()
 
-            # Сохраняем в базу
             success = db.save_user(
                 message.from_user.id,
                 user_data['fio'],
@@ -342,26 +339,6 @@ async def process_custom_size(message: types.Message, state: FSMContext):
 async def process_custom_size(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['size'] = message.text
-
-    user_data = await state.get_data()
-    success = db.save_user(
-        message.from_user.id,
-        user_data['fio'],
-        user_data['email'],
-        user_data['phone'],
-        user_data['photo_id'],
-        user_data['size']
-    )
-
-    if success:
-        await message.answer(
-            f"✅ Вы выбрали размер: {message.text}\nДанные сохранены! Скоро с вами свяжутся.",
-            reply_markup=kb_menu
-        )
-    else:
-        await message.answer("❌ Ошибка сохранения данных", reply_markup=kb_menu)
-
-    await state.finish()
 
 
 @dp.message_handler(state=Form.photo, content_types=types.ContentTypes.ANY)
