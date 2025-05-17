@@ -4,11 +4,11 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils import executor
 import config
-from keyboard_menu import kb_menu, kb_size
 from database import *
 import re
 import requests
 import os
+from keyboard_menu import kb_menu, kb_size, calculate_price
 from aiogram import Bot, Dispatcher, types
 from admin_panel import (
     AdminStates,
@@ -20,7 +20,22 @@ from admin_panel import (
     process_new_status
 )
 
+size_prices = {
+    "1x1": 1000,
+    "1x3": 1800,
+    "2x2": 3500,
+    "3x4": 6000,
+    "4x6": 9000,
+    "5x10": 14000,
+    "6x12": 18000
+}
 
+def calculate_custom_price(width: float, height: float) -> int:
+    """Рассчитывает цену для нестандартного размера"""
+    for standard in [(1,1), (1,2), (2,2), (3,4), (4,6), (5,10), (6,12)]:
+        if width <= standard[0] and height <= standard[1]:
+            return size_prices[f"{standard[0]}x{standard[1]}"]
+    return size_prices["6x12"]
 
 
 
@@ -195,9 +210,11 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
         return
 
     size = f"{size_type.replace('x', 'x')} м"
+    price = calculate_price(size_type)
 
     async with state.proxy() as data:
         data['size'] = size
+        data['price'] = price
 
     user_data = await state.get_data()
 
@@ -209,70 +226,112 @@ async def process_size(callback_query: types.CallbackQuery, state: FSMContext):
         user_data['photo_id'],
         user_data['photo_url'],
         user_data['local_path'],
-        user_data['size']
+        user_data['size'],
+        user_data.get('price', 0)
     )
 
     await bot.send_photo(
         chat_id=callback_query.from_user.id,
         photo=user_data['photo_id'],
         caption=f"""
-                📋 <b>Ваш заказ принят!</b>
+            📋 <b>Ваш заказ принят!</b>
+            
+            🚀 <b>Статус:</b> Заказ создан
+            💰 <b>Стоимость:</b> {price} руб
+            👤 <b>ФИО:</b> {user_data['fio']}
+            📧 <b>Email:</b> {user_data['email']}
+            📱 <b>Телефон:</b> {user_data['phone']}
+            📏 <b>Размер баннера:</b> {user_data['size']}
 
-                🚀 <b>Статус:</b> Заказ создан
-                👤 <b>ФИО:</b> {user_data['fio']}
-                📧 <b>Email:</b> {user_data['email']}
-                📱 <b>Телефон:</b> {user_data['phone']}
-                📏 <b>Размер баннера:</b> {user_data['size']}
-
-                🖼 <i>Прикрепленное фото будет использовано для макета</i>
-                """,
+            🖼 <i>Прикрепленное фото будет использовано для макета</i>
+            """,
         parse_mode="HTML",
         reply_markup=kb_menu
     )
-
     await state.finish()
 
+
+    await bot.send_photo(
+        chat_id=callback_query.from_user.id,
+        photo=user_data['photo_id'],
+        caption=f"""
+            📋 <b>Ваш заказ принят!</b>
+            
+            🚀 <b>Статус:</b> Заказ создан
+            💰 <b>Стоимость:</b> {price} руб
+            👤 <b>ФИО:</b> {user_data['fio']}
+            📧 <b>Email:</b> {user_data['email']}
+            📱 <b>Телефон:</b> {user_data['phone']}
+            📏 <b>Размер баннера:</b> {user_data['size']}
+
+            🖼 <i>Прикрепленное фото будет использовано для макета</i>
+            """,
+    parse_mode="HTML",
+    reply_markup=kb_menu
+)
+    await state.finish()
 
 
 @dp.message_handler(state=Form.size)
 async def process_custom_size(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['size'] = message.text
+    try:
+        # Удаляем все пробелы и "м" если есть
+        size_text = message.text.lower().replace(' ', '').replace('м', '')
+        if 'x' in size_text:
+            width, height = map(float, size_text.split('x'))
 
-    user_data = await state.get_data()
-    success = db.save_user(
-        message.from_user.id,
-        user_data['fio'],
-        user_data['email'],
-        user_data['phone'],
-        user_data['photo_id'],
-        user_data['photo_url'],
-        user_data['local_path'],
-        user_data['size']
-    )
+            # Рассчитываем цену
+            price = calculate_custom_price(width, height)
+            size_str = f"{width}x{height} м"
 
-    if success:
+            async with state.proxy() as data:
+                data['size'] = size_str
+                data['price'] = price
 
-        await message.answer_photo(
-            photo=user_data['photo_id'],
-            caption=f"""
-                📋 <b>Ваш заказ принят!</b>
-                
-                🚀 <b>Статус:</b> Заказ создан
-                👤 <b>ФИО:</b> {user_data['fio']}
-                📧 <b>Email:</b> {user_data['email']}
-                📱 <b>Телефон:</b> {user_data['phone']}
-                📏 <b>Размер баннера:</b> {user_data['size']}
+            user_data = await state.get_data()
 
-                🖼 <i>Прикрепленное фото будет использовано для макета</i>
-                """,
-            parse_mode="HTML",
+            # Сохраняем в базу
+            success = db.save_user(
+                message.from_user.id,
+                user_data['fio'],
+                user_data['email'],
+                user_data['phone'],
+                user_data['photo_id'],
+                user_data['photo_url'],
+                user_data['local_path'],
+                user_data['size'],
+                user_data['price']
+            )
+
+            if success:
+                await message.answer_photo(
+                    photo=user_data['photo_id'],
+                    caption=f"""
+                        📋 <b>Ваш заказ принят!</b>
+                        🚀 <b>Статус:</b> Заказ создан
+                        💰 <b>Стоимость:</b> {price} руб
+
+                        👤 <b>ФИО:</b> {user_data['fio']}
+                        📧 <b>Email:</b> {user_data['email']}
+                        📱 <b>Телефон:</b> {user_data['phone']}
+                        📏 <b>Размер баннера:</b> {user_data['size']}
+
+                        🖼 <i>Прикрепленное фото будет использовано для макета</i>
+                        """,
+                    parse_mode="HTML",
+                    reply_markup=kb_menu
+                )
+            else:
+                await message.answer("❌ Ошибка сохранения данных", reply_markup=kb_menu)
+
+            await state.finish()
+
+    except Exception as e:
+        print(f"Ошибка обработки кастомного размера: {e}")
+        await message.answer(
+            "❌ Неверный формат размера. Введите в формате 'ШxВ' (например '2x3' или '1.5x2')",
             reply_markup=kb_menu
         )
-    else:
-        await message.answer("❌ Ошибка сохранения данных", reply_markup=kb_menu)
-
-    await state.finish()
 
 
 @dp.message_handler(state=Form.size)
