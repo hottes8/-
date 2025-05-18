@@ -30,6 +30,7 @@ class Database:
         try:
             connection = self.connect()
             if connection is None:
+                print("Не удалось подключиться к базе данных при сохранении пользователя")
                 return False
 
             cursor = connection.cursor()
@@ -39,28 +40,30 @@ class Database:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Заказ создан', %s)
             ''', (user_id, fio, email, phone, photo_id, photo_url, local_path, size, price))
             connection.commit()
+            print(f"Успешно сохранен заказ для user_id {user_id}")
             return True
         except Error as e:
-            print(f"❌ Ошибка: {e}")
+            print(f"❌ Ошибка при сохранении пользователя {user_id}: {e}")
             return False
         finally:
             if connection and connection.is_connected():
                 connection.close()
 
-    def update_order_status(self, user_id, new_status):
+    def get_order_status(self, user_id):
         try:
             connection = self.connect()
             if connection is None:
-                return False
+                print("Не удалось подключиться к базе данных")
+                return None
 
-            cursor = connection.cursor()
-            cursor.execute('UPDATE users SET status = %s WHERE user_id = %s',
-                           (new_status, user_id))
-            connection.commit()
-            return True
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute('SELECT status FROM users WHERE user_id = %s ORDER BY id DESC LIMIT 1', (user_id,))
+            result = cursor.fetchone()
+            print(f"Результат запроса статуса для user_id {user_id}: {result}")
+            return result['status'] if result else None
         except Error as e:
-            print(f"❌ Ошибка обновления статуса: {e}")
-            return False
+            print(f"❌ Ошибка получения статуса: {e}")
+            return None
         finally:
             if connection and connection.is_connected():
                 connection.close()
@@ -68,23 +71,6 @@ class Database:
     def close(self):
         if self.connection and self.connection.is_connected():
             self.connection.close()
-
-    def get_order_status(self, user_id):
-        try:
-            connection = self.connect()
-            if connection is None:
-                return None
-
-            cursor = connection.cursor()
-            cursor.execute('SELECT status FROM users WHERE user_id = %s', (user_id,))
-            result = cursor.fetchone()
-            return result[0] if result else None
-        except Error as e:
-            print(f"❌ Ошибка получения статуса: {e}")
-            return None
-        finally:
-            if connection and connection.is_connected():
-                connection.close()
 
     def get_price(self, size):
         try:
@@ -135,6 +121,28 @@ class Database:
             return True
         except Error as e:
             print(f"❌ Ошибка обновления цены: {e}")
+            return False
+        finally:
+            if connection and connection.is_connected():
+                connection.close()
+
+    def update_order_status(self, user_id, status):
+        try:
+            connection = self.connect()
+            if connection is None:
+                return False
+
+            cursor = connection.cursor()
+            cursor.execute('''
+                UPDATE users SET status = %s 
+                WHERE user_id = %s 
+                ORDER BY id DESC 
+                LIMIT 1
+            ''', (status, user_id))
+            connection.commit()
+            return cursor.rowcount > 0
+        except Error as e:
+            print(f"❌ Ошибка обновления статуса: {e}")
             return False
         finally:
             if connection and connection.is_connected():

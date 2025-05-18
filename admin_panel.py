@@ -28,7 +28,7 @@ async def get_custom_price():
     for p in prices:
         if p['is_custom']:
             return p['price']
-    return 396  # Значение по умолчанию, если не найдено
+    return 396
 
 async def admin_login(message: types.Message):
     await AdminStates.waiting_password.set()
@@ -47,7 +47,6 @@ async def price_settings(message: types.Message):
     await AdminStates.waiting_price_action.set()
     standard_prices = await get_standard_prices()
 
-    # Создаем клавиатуру с доступными размерами
     kb_sizes = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for size in standard_prices.keys():
         kb_sizes.add(types.KeyboardButton(text=size))
